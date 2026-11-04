@@ -5,7 +5,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#071421">
-<title>Advanced Autonomous Vehicle Detection</title>
+<title>Autonomous Vehicle Detection</title>
 
 <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"></script>
 
@@ -14,72 +14,76 @@
 
 body {
   margin: 0;
-  padding: 18px;
+  padding: 16px;
   background: #071421;
   color: #eaf4ff;
   font-family: Arial, sans-serif;
 }
 
-main {
-  max-width: 1050px;
-  margin: auto;
-}
+main { max-width: 1050px; margin: auto; }
 
-h1 { font-size: 27px; margin-bottom: 8px; }
-.subtitle { color: #9eb4ca; line-height: 1.5; }
+h1 { font-size: 27px; }
+h2 { font-size: 20px; }
+
+.muted { color: #a8bfd4; line-height: 1.6; }
 
 .panel {
   background: #102337;
   border: 1px solid #29445e;
-  border-radius: 15px;
+  border-radius: 14px;
   padding: 16px;
-  margin-top: 16px;
+  margin: 16px 0;
 }
 
 .stage {
-  position: relative;
   width: 100%;
+  aspect-ratio: 16 / 9;
+  position: relative;
   overflow: hidden;
   background: #02070d;
   border-radius: 10px;
-  aspect-ratio: 16 / 9;
 }
 
-video, #overlay {
+#video {
   position: absolute;
-  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: contain;
 }
 
-video { transform: none; }
-#overlay { pointer-events: none; }
+#overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
 
 .controls {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 14px;
   align-items: center;
+  gap: 12px;
+  margin-top: 14px;
 }
 
 button {
+  background: #1687f8;
+  color: white;
   border: 0;
-  border-radius: 9px;
+  border-radius: 8px;
   padding: 12px 16px;
   font-weight: bold;
   cursor: pointer;
-  background: #1687f8;
-  color: white;
 }
 
-button.secondary { background: #29445e; }
+button.secondary { background: #304961; }
 button:disabled { opacity: .5; cursor: not-allowed; }
 
-label { color: #c7d8e9; }
+input[type="range"] { width: 150px; }
 
-input[type="range"] { max-width: 150px; }
+#status { color: #78e5ad; }
+#error { color: #ff9999; white-space: pre-wrap; overflow-wrap: anywhere; }
 
 .stats {
   display: grid;
@@ -88,17 +92,14 @@ input[type="range"] { max-width: 150px; }
 }
 
 .stat {
-  padding: 13px;
-  border-radius: 10px;
   background: #091a2a;
-  min-width: 0;
+  padding: 14px;
+  border-radius: 9px;
+  overflow-wrap: anywhere;
 }
 
-.stat small { color: #9eb4ca; display: block; }
-.stat strong { display: block; margin-top: 7px; overflow-wrap: anywhere; }
-
-#status { color: #75d7a2; }
-#error { color: #ff9e9e; white-space: pre-wrap; }
+.stat small { color: #a8bfd4; }
+.stat strong { display: block; margin-top: 8px; }
 
 #detections {
   display: grid;
@@ -110,22 +111,16 @@ input[type="range"] { max-width: 150px; }
   display: flex;
   justify-content: space-between;
   gap: 10px;
+  padding: 11px;
   background: #091a2a;
   border-radius: 8px;
-  padding: 11px;
 }
 
-.note {
-  color: #a9bdd0;
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-@media (max-width: 600px) {
+@media(max-width:600px) {
   body { padding: 10px; }
-  h1 { font-size: 22px; }
-  .stats { grid-template-columns: 1fr; }
+  h1 { font-size: 23px; }
   .stage { aspect-ratio: 4 / 3; }
+  .stats { grid-template-columns: 1fr; }
 }
 </style>
 </head>
@@ -133,8 +128,8 @@ input[type="range"] { max-width: 150px; }
 <body>
 <main>
   <h1>Autonomous Vehicle Vision</h1>
-  <p class="subtitle">
-    Real-time object detection using your trained YOLO11 ONNX model.
+  <p class="muted">
+    Live object detection powered by your trained YOLO11 model.
   </p>
 
   <section class="panel">
@@ -145,10 +140,12 @@ input[type="range"] { max-width: 150px; }
 
     <div class="controls">
       <button id="startBtn">Load Model & Start Camera</button>
-      <button id="stopBtn" class="secondary" disabled>Stop Camera</button>
+      <button id="stopBtn" class="secondary" disabled>
+        Stop Camera
+      </button>
     </div>
 
-    <p id="status">Model not loaded.</p>
+    <p id="status">Ready to load the model.</p>
     <p id="error"></p>
   </section>
 
@@ -160,17 +157,13 @@ input[type="range"] { max-width: 150px; }
              min="0.10" max="0.90" step="0.05" value="0.35">
       <strong id="confidenceValue">0.35</strong>
     </div>
-    <p class="note">
-      Increase the threshold to reduce weak detections.
-      Lower it to show more possible objects.
-    </p>
   </section>
 
   <section class="panel">
     <h2>Live Statistics</h2>
     <div class="stats">
       <div class="stat">
-        <small>Detected objects</small>
+        <small>Objects detected</small>
         <strong id="objectCount">0</strong>
       </div>
       <div class="stat">
@@ -178,24 +171,24 @@ input[type="range"] { max-width: 150px; }
         <strong id="inferenceTime">--</strong>
       </div>
       <div class="stat">
-        <small>Model</small>
-        <strong>YOLO11 ONNX</strong>
+        <small>Model status</small>
+        <strong id="modelStatus">Not loaded</strong>
       </div>
     </div>
-    <h3>Detected Objects</h3>
+
+    <h2>Detection Results</h2>
     <div id="detections">No detections yet.</div>
   </section>
 
   <section class="panel">
-    <h2>Model Classes</h2>
-    <p class="note">
-      Animal · Bus · Car · Person · Traffic sign · Bush ·
-      Tree crown · Tree trunk
+    <h2>Trained Classes</h2>
+    <p class="muted">
+      Animal, Bus, Car, Person, Traffic Sign, Bush,
+      Tree Crown and Tree Trunk.
     </p>
-    <p class="note">
-      This is an object-detection prototype, not a complete
-      autonomous-driving controller. It does not control vehicle
-      steering or brakes.
+    <p class="muted">
+      This webpage performs object detection only. It does not
+      control steering, brakes or vehicle motors.
     </p>
   </section>
 </main>
@@ -203,20 +196,23 @@ input[type="range"] { max-width: 150px; }
 <script>
 "use strict";
 
-// The ONNX file must be in the same GitHub folder as index.html.
-const MODEL_URL = "./best.onnx";
-const INPUT_SIZE = 640;
-const NUM_CLASSES = 8;
+// IMPORTANT:
+// If you rename the uploaded file to best.onnx, change this to:
+// const MODEL_FILE = "best.onnx";
+const MODEL_FILE = "best%20(1).onnx";
 
+// Resolve the model relative to the published webpage.
+const MODEL_URL = new URL(MODEL_FILE, window.location.href).href;
+
+const SIZE = 640;
 const CLASS_NAMES = [
-  "animal",
-  "bus",
-  "car",
-  "person",
-  "traffic sign",
-  "bush",
-  "tree crown",
-  "tree trunk"
+  "animal", "bus", "car", "person",
+  "traffic sign", "bush", "tree crown", "tree trunk"
+];
+
+const COLORS = [
+  "#ff5c5c", "#ffb84d", "#39d98a", "#40a9ff",
+  "#d78bff", "#ffe066", "#ff7ac8", "#70f0e8"
 ];
 
 const video = document.getElementById("video");
@@ -226,169 +222,201 @@ const startBtn = document.getElementById("startBtn");
 const stopBtn = document.getElementById("stopBtn");
 const statusEl = document.getElementById("status");
 const errorEl = document.getElementById("error");
+const modelStatus = document.getElementById("modelStatus");
 const detectionsEl = document.getElementById("detections");
 const confidenceInput = document.getElementById("confidence");
 
 let session = null;
-let cameraStream = null;
+let stream = null;
 let running = false;
 let busy = false;
-let animationId = null;
-
-const colors = [
-  "#ff5c5c", "#ffb84d", "#39d98a", "#40a9ff",
-  "#d78bff", "#ffe066", "#ff7ac8", "#70f0e8"
-];
-
-document.getElementById("confidenceValue").textContent =
-  Number(confidenceInput.value).toFixed(2);
+let frameId = null;
 
 confidenceInput.addEventListener("input", () => {
   document.getElementById("confidenceValue").textContent =
     Number(confidenceInput.value).toFixed(2);
 });
 
-function setStatus(message) {
-  statusEl.textContent = message;
-}
-
 function showError(message) {
   errorEl.textContent = message;
 }
 
-function resizeOverlay() {
-  const rect = video.getBoundingClientRect();
+function resizeCanvas() {
+  const rect = canvas.getBoundingClientRect();
   const dpr = window.devicePixelRatio || 1;
 
   canvas.width = Math.round(rect.width * dpr);
   canvas.height = Math.round(rect.height * dpr);
-
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
-window.addEventListener("resize", resizeOverlay);
+window.addEventListener("resize", resizeCanvas);
 
-// Prepare a 640 x 640 RGB input with letterboxing.
+// Verify that the model URL returns a successful response
+// before asking ONNX Runtime to load it.
+async function checkModelURL() {
+  const response = await fetch(MODEL_URL, { cache: "no-store" });
+
+  if (!response.ok) {
+    throw new Error(
+      "Model download failed: HTTP " + response.status +
+      "\nRequested URL: " + MODEL_URL +
+      "\nCheck the GitHub filename and repository folder."
+    );
+  }
+
+  const type = response.headers.get("content-type") || "";
+
+  if (type.includes("text/html")) {
+    throw new Error(
+      "GitHub returned a webpage instead of the model file.\n" +
+      "Check that the model exists at: " + MODEL_URL
+    );
+  }
+
+  const buffer = await response.arrayBuffer();
+
+  if (buffer.byteLength < 1000) {
+    throw new Error(
+      "The model response is unexpectedly small (" +
+      buffer.byteLength + " bytes). Check the uploaded file."
+    );
+  }
+
+  console.log("Model URL:", MODEL_URL);
+  console.log(
+    "Model download size:",
+    (buffer.byteLength / 1048576).toFixed(2), "MB"
+  );
+
+  return buffer;
+}
+
+// Create a 640 x 640 image with letterbox padding.
 function preprocess() {
   const vw = video.videoWidth;
   const vh = video.videoHeight;
 
-  if (!vw || !vh) throw new Error("Camera video is not ready.");
+  if (!vw || !vh) throw new Error("Camera is not ready.");
 
-  const scale = Math.min(INPUT_SIZE / vw, INPUT_SIZE / vh);
+  const scale = Math.min(SIZE / vw, SIZE / vh);
   const nw = Math.round(vw * scale);
   const nh = Math.round(vh * scale);
-  const padX = Math.floor((INPUT_SIZE - nw) / 2);
-  const padY = Math.floor((INPUT_SIZE - nh) / 2);
+  const px = Math.floor((SIZE - nw) / 2);
+  const py = Math.floor((SIZE - nh) / 2);
 
   const temp = document.createElement("canvas");
-  temp.width = INPUT_SIZE;
-  temp.height = INPUT_SIZE;
+  temp.width = SIZE;
+  temp.height = SIZE;
 
-  const tctx = temp.getContext("2d", { willReadFrequently: true });
+  const tctx = temp.getContext("2d", {
+    willReadFrequently: true
+  });
+
   tctx.fillStyle = "rgb(114,114,114)";
-  tctx.fillRect(0, 0, INPUT_SIZE, INPUT_SIZE);
-  tctx.drawImage(video, padX, padY, nw, nh);
+  tctx.fillRect(0, 0, SIZE, SIZE);
+  tctx.drawImage(video, px, py, nw, nh);
 
-  const pixels = tctx.getImageData(0, 0, INPUT_SIZE, INPUT_SIZE).data;
-  const plane = INPUT_SIZE * INPUT_SIZE;
+  const pixels = tctx.getImageData(0, 0, SIZE, SIZE).data;
+  const plane = SIZE * SIZE;
   const input = new Float32Array(3 * plane);
 
   for (let i = 0; i < plane; i++) {
-    input[i] = pixels[i * 4] / 255;
-    input[plane + i] = pixels[i * 4 + 1] / 255;
-    input[2 * plane + i] = pixels[i * 4 + 2] / 255;
+    input[i] = pixels[4 * i] / 255;
+    input[plane + i] = pixels[4 * i + 1] / 255;
+    input[2 * plane + i] = pixels[4 * i + 2] / 255;
   }
 
   return {
-    tensor: new ort.Tensor("float32", input, [1, 3, INPUT_SIZE, INPUT_SIZE]),
-    scale, padX, padY, vw, vh
+    tensor: new ort.Tensor(
+      "float32", input, [1, 3, SIZE, SIZE]
+    ),
+    scale, px, py, vw, vh
   };
 }
 
-// Intersection over Union for non-maximum suppression.
-function iou(a, b) {
+function intersectionOverUnion(a, b) {
   const x1 = Math.max(a.x1, b.x1);
   const y1 = Math.max(a.y1, b.y1);
   const x2 = Math.min(a.x2, b.x2);
   const y2 = Math.min(a.y2, b.y2);
 
-  const intersection =
+  const inter =
     Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
 
   const areaA = (a.x2 - a.x1) * (a.y2 - a.y1);
   const areaB = (b.x2 - b.x1) * (b.y2 - b.y1);
 
-  return intersection / Math.max(areaA + areaB - intersection, 1e-9);
+  return inter / Math.max(areaA + areaB - inter, 1e-9);
 }
 
-// Supports common YOLO detection outputs:
-// [1, 4 + classes, candidates] or
-// [1, candidates, 4 + classes].
-function decodeOutput(output, meta) {
+// Decode common YOLO output:
+// [1, 12, candidates] or [1, candidates, 12].
+// This assumes 4 box values + 8 class scores.
+function decode(output, meta) {
   const dims = output.dims;
-  const values = output.data;
 
   if (!dims || dims.length !== 3 || dims[0] !== 1) {
     throw new Error(
-      "Unexpected ONNX output shape: " + JSON.stringify(dims)
+      "Unsupported model output shape: " + JSON.stringify(dims)
     );
   }
 
-  let candidates, features, channelFirst;
+  let features, candidates, channelFirst;
 
-  if (dims[1] === 4 + NUM_CLASSES) {
+  if (dims[1] === 12) {
     features = dims[1];
     candidates = dims[2];
     channelFirst = true;
-  } else if (dims[2] === 4 + NUM_CLASSES) {
+  } else if (dims[2] === 12) {
     candidates = dims[1];
     features = dims[2];
     channelFirst = false;
   } else {
     throw new Error(
-      "Model output does not match the expected 8-class YOLO detection format. " +
-      "Output shape: " + JSON.stringify(dims)
+      "Your ONNX model output is " + JSON.stringify(dims) +
+      ", but this webpage expects an 8-class YOLO output " +
+      "with 12 features. The decoder must be adapted to your model."
     );
   }
 
-  function at(candidate, feature) {
+  const data = output.data;
+
+  function get(i, f) {
     return channelFirst
-      ? values[feature * candidates + candidate]
-      : values[candidate * features + feature];
+      ? data[f * candidates + i]
+      : data[i * features + f];
   }
 
   const threshold = Number(confidenceInput.value);
   const found = [];
 
   for (let i = 0; i < candidates; i++) {
-    const cx = at(i, 0);
-    const cy = at(i, 1);
-    const w = at(i, 2);
-    const h = at(i, 3);
+    const cx = get(i, 0);
+    const cy = get(i, 1);
+    const w = get(i, 2);
+    const h = get(i, 3);
 
-    let bestScore = -Infinity;
+    let score = -Infinity;
     let classId = -1;
 
-    for (let c = 0; c < NUM_CLASSES; c++) {
-      const score = at(i, 4 + c);
-      if (score > bestScore) {
-        bestScore = score;
+    for (let c = 0; c < CLASS_NAMES.length; c++) {
+      const s = get(i, 4 + c);
+      if (s > score) {
+        score = s;
         classId = c;
       }
     }
 
-    // This model format is expected to provide class probabilities
-    // directly, without a separate objectness score.
-    if (!Number.isFinite(bestScore) || bestScore < threshold) continue;
+    if (!Number.isFinite(score) || score < threshold) continue;
     if (![cx, cy, w, h].every(Number.isFinite)) continue;
     if (w <= 0 || h <= 0) continue;
 
-    // Undo letterbox padding and scaling.
-    let x1 = (cx - w / 2 - meta.padX) / meta.scale;
-    let y1 = (cy - h / 2 - meta.padY) / meta.scale;
-    let x2 = (cx + w / 2 - meta.padX) / meta.scale;
-    let y2 = (cy + h / 2 - meta.padY) / meta.scale;
+    // Undo letterbox transformation.
+    let x1 = (cx - w / 2 - meta.px) / meta.scale;
+    let y1 = (cy - h / 2 - meta.py) / meta.scale;
+    let x2 = (cx + w / 2 - meta.px) / meta.scale;
+    let y2 = (cy + h / 2 - meta.py) / meta.scale;
 
     x1 = Math.max(0, Math.min(meta.vw, x1));
     y1 = Math.max(0, Math.min(meta.vh, y1));
@@ -397,77 +425,73 @@ function decodeOutput(output, meta) {
 
     if (x2 <= x1 || y2 <= y1) continue;
 
-    found.push({
-      x1, y1, x2, y2,
-      score: bestScore,
-      classId
-    });
+    found.push({ x1, y1, x2, y2, score, classId });
   }
 
-  // Class-wise NMS.
+  // Remove overlapping duplicate boxes for each class.
   found.sort((a, b) => b.score - a.score);
   const kept = [];
 
-  for (const det of found) {
-    const duplicate = kept.some(other =>
-      other.classId === det.classId && iou(other, det) > 0.45
-    );
+  for (const d of found) {
+    if (kept.some(k =>
+      k.classId === d.classId &&
+      intersectionOverUnion(k, d) > 0.45
+    )) continue;
 
-    if (!duplicate) kept.push(det);
+    kept.push(d);
     if (kept.length >= 100) break;
   }
 
   return kept;
 }
 
-function drawDetections(detections, meta) {
-  resizeOverlay();
+function draw(detections, meta) {
+  resizeCanvas();
 
-  const rect = video.getBoundingClientRect();
-  const viewW = rect.width;
-  const viewH = rect.height;
+  const rect = canvas.getBoundingClientRect();
+  const vw = rect.width;
+  const vh = rect.height;
 
-  // Match object-fit: contain used by the video.
-  const scale = Math.min(viewW / meta.vw, viewH / meta.vh);
-  const offsetX = (viewW - meta.vw * scale) / 2;
-  const offsetY = (viewH - meta.vh * scale) / 2;
+  const scale = Math.min(vw / meta.vw, vh / meta.vh);
+  const ox = (vw - meta.vw * scale) / 2;
+  const oy = (vh - meta.vh * scale) / 2;
 
-  ctx.clearRect(0, 0, viewW, viewH);
+  ctx.clearRect(0, 0, vw, vh);
   ctx.lineWidth = 2;
   ctx.font = "bold 13px Arial";
 
   for (const d of detections) {
-    const x = offsetX + d.x1 * scale;
-    const y = offsetY + d.y1 * scale;
+    const x = ox + d.x1 * scale;
+    const y = oy + d.y1 * scale;
     const w = (d.x2 - d.x1) * scale;
     const h = (d.y2 - d.y1) * scale;
-    const color = colors[d.classId];
 
+    const color = COLORS[d.classId];
     const label = CLASS_NAMES[d.classId] +
       " " + (d.score * 100).toFixed(1) + "%";
 
     ctx.strokeStyle = color;
     ctx.strokeRect(x, y, w, h);
 
-    const labelW = ctx.measureText(label).width + 10;
-    const labelY = Math.max(0, y - 23);
+    const labelWidth = ctx.measureText(label).width + 10;
+    const labelY = Math.max(0, y - 22);
 
     ctx.fillStyle = color;
-    ctx.fillRect(x, labelY, labelW, 22);
+    ctx.fillRect(x, labelY, labelWidth, 21);
 
     ctx.fillStyle = "#071421";
-    ctx.fillText(label, x + 5, labelY + 15);
+    ctx.fillText(label, x + 5, labelY + 14);
   }
 
   document.getElementById("objectCount").textContent =
     detections.length;
 
+  detectionsEl.replaceChildren();
+
   if (!detections.length) {
     detectionsEl.textContent = "No objects detected.";
     return;
   }
-
-  detectionsEl.replaceChildren();
 
   for (const d of detections) {
     const row = document.createElement("div");
@@ -476,15 +500,16 @@ function drawDetections(detections, meta) {
     const name = document.createElement("span");
     name.textContent = CLASS_NAMES[d.classId];
 
-    const score = document.createElement("strong");
-    score.textContent = (d.score * 100).toFixed(1) + "%";
+    const confidence = document.createElement("strong");
+    confidence.textContent =
+      (d.score * 100).toFixed(1) + "%";
 
-    row.append(name, score);
-    detectionsEl.appendChild(row);
+    row.append(name, confidence);
+    detectionsEl.append(row);
   }
 }
 
-async function inferenceLoop() {
+async function loop() {
   if (!running) return;
 
   if (!busy && session && video.readyState >= 2) {
@@ -494,22 +519,23 @@ async function inferenceLoop() {
       const startTime = performance.now();
       const meta = preprocess();
 
-      const results = await session.run({
+      const feeds = {
         [session.inputNames[0]]: meta.tensor
-      });
+      };
 
+      const results = await session.run(feeds);
       const output = results[session.outputNames[0]];
-      const detections = decodeOutput(output, meta);
+      const detections = decode(output, meta);
 
-      drawDetections(detections, meta);
+      draw(detections, meta);
 
       document.getElementById("inferenceTime").textContent =
-        (performance.now() - startTime).toFixed(0) + " ms";
+        Math.round(performance.now() - startTime) + " ms";
 
-      setStatus("Camera running · Model inference active");
-    } catch (err) {
-      showError(err.message || String(err));
-      setStatus("Detection error. Check model compatibility.");
+      statusEl.textContent = "Camera running · Detection active";
+    } catch (e) {
+      showError("Detection failed:\n" + (e.message || String(e)));
+      statusEl.textContent = "Detection stopped due to an error.";
       running = false;
       startBtn.disabled = false;
       stopBtn.disabled = true;
@@ -518,9 +544,7 @@ async function inferenceLoop() {
     }
   }
 
-  if (running) {
-    animationId = requestAnimationFrame(inferenceLoop);
-  }
+  if (running) frameId = requestAnimationFrame(loop);
 }
 
 async function start() {
@@ -528,27 +552,54 @@ async function start() {
   showError("");
 
   try {
-    if (!session) {
-      setStatus("Loading ONNX model...");
-
-      session = await ort.InferenceSession.create(MODEL_URL, {
-        executionProviders: ["wasm"],
-        graphOptimizationLevel: "all"
-      });
-
-      console.log("Model inputs:", session.inputNames);
-      console.log("Model outputs:", session.outputNames);
-
-      for (const name of session.inputNames) {
-        console.log("Input metadata:", name, session.inputMetadata);
-      }
-
-      console.log("Output metadata:", session.outputMetadata);
+    if (!window.ort) {
+      throw new Error(
+        "ONNX Runtime failed to load. Check your internet connection."
+      );
     }
 
-    setStatus("Requesting camera permission...");
+    if (!session) {
+      statusEl.textContent = "Checking model URL...";
+      modelStatus.textContent = "Downloading";
 
-    cameraStream = await navigator.mediaDevices.getUserMedia({
+      const modelBuffer = await checkModelURL();
+
+      statusEl.textContent = "Loading ONNX model...";
+
+      try {
+        // Load downloaded bytes directly. This avoids a second
+        // fetch by ONNX Runtime. External-data models still need
+        // their external tensor files and a compatible export.
+        session = await ort.InferenceSession.create(modelBuffer, {
+          executionProviders: ["wasm"],
+          graphOptimizationLevel: "all"
+        });
+      } catch (e) {
+        throw new Error(
+          "The model file was downloaded, but ONNX Runtime could not load it.\n" +
+          "It may require external tensor data, or the export may be incompatible.\n" +
+          "Original error: " + (e.message || String(e))
+        );
+      }
+
+      console.log("Input names:", session.inputNames);
+      console.log("Output names:", session.outputNames);
+      console.log("Input metadata:", session.inputMetadata);
+      console.log("Output metadata:", session.outputMetadata);
+
+      modelStatus.textContent = "Loaded";
+    }
+
+    if (!navigator.mediaDevices ||
+        !navigator.mediaDevices.getUserMedia) {
+      throw new Error(
+        "Camera access requires HTTPS or localhost in a supported browser."
+      );
+    }
+
+    statusEl.textContent = "Requesting camera permission...";
+
+    stream = await navigator.mediaDevices.getUserMedia({
       audio: false,
       video: {
         facingMode: { ideal: "environment" },
@@ -557,46 +608,52 @@ async function start() {
       }
     });
 
-    video.srcObject = cameraStream;
+    video.srcObject = stream;
     await video.play();
 
     if (!video.videoWidth) {
-      await new Promise(resolve => {
+      await new Promise((resolve, reject) => {
         video.addEventListener("loadedmetadata", resolve, { once: true });
+        video.addEventListener("error", reject, { once: true });
       });
     }
 
     running = true;
     stopBtn.disabled = false;
-    setStatus("Camera started.");
-    animationId = requestAnimationFrame(inferenceLoop);
+    statusEl.textContent = "Camera started.";
+    frameId = requestAnimationFrame(loop);
 
-  } catch (err) {
+  } catch (e) {
     running = false;
     startBtn.disabled = false;
     stopBtn.disabled = true;
+    modelStatus.textContent = session ? "Loaded" : "Load failed";
 
     showError(
-      "Could not start: " + (err.message || String(err)) +
-      "\nCheck that best.onnx is uploaded beside index.html, " +
-      "the site uses HTTPS, and camera permission is allowed."
+      (e.message || String(e)) +
+      "\n\nModel URL: " + MODEL_URL
     );
 
-    setStatus("Startup failed.");
+    statusEl.textContent = "Could not start. See error above.";
+
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      stream = null;
+    }
   }
 }
 
 function stop() {
   running = false;
 
-  if (animationId !== null) {
-    cancelAnimationFrame(animationId);
-    animationId = null;
+  if (frameId !== null) {
+    cancelAnimationFrame(frameId);
+    frameId = null;
   }
 
-  if (cameraStream) {
-    cameraStream.getTracks().forEach(track => track.stop());
-    cameraStream = null;
+  if (stream) {
+    stream.getTracks().forEach(track => track.stop());
+    stream = null;
   }
 
   video.srcObject = null;
@@ -608,7 +665,7 @@ function stop() {
 
   startBtn.disabled = false;
   stopBtn.disabled = true;
-  setStatus("Camera stopped.");
+  statusEl.textContent = "Camera stopped.";
 }
 
 startBtn.addEventListener("click", start);
