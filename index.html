@@ -25,7 +25,10 @@ main { max-width: 1050px; margin: auto; }
 h1 { font-size: 27px; }
 h2 { font-size: 20px; }
 
-.muted { color: #a8bfd4; line-height: 1.6; }
+.muted {
+  color: #a8bfd4;
+  line-height: 1.6;
+}
 
 .panel {
   background: #102337;
@@ -84,6 +87,7 @@ input[type="range"] { width: 150px; }
 
 #status { color: #78e5ad; }
 #error { color: #ff9999; white-space: pre-wrap; overflow-wrap: anywhere; }
+#bleStatus { color: #ffd166; font-weight: bold; overflow-wrap: anywhere; }
 
 .stats {
   display: grid;
@@ -127,104 +131,210 @@ input[type="range"] { width: 150px; }
 
 <body>
 <main>
-  <h1>Autonomous Vehicle Vision</h1>
+
+<h1>Autonomous Vehicle Vision</h1>
+<p class="muted">Live object detection powered by your trained YOLO11 model.</p>
+
+<section class="panel">
+
+  <div class="stage">
+    <video id="video" autoplay muted playsinline></video>
+    <canvas id="overlay"></canvas>
+  </div>
+
+  <div class="controls">
+    <button id="startBtn">Load Model & Start Camera</button>
+    <button id="stopBtn" class="secondary" disabled>Stop Camera</button>
+  </div>
+
+  <p id="status">Ready to load the model.</p>
+  <p id="error"></p>
+
+</section>
+
+<!-- ROBOT BLUETOOTH CONNECTION -->
+
+<section class="panel">
+
+  <h2>Robot Bluetooth Connection</h2>
+
   <p class="muted">
-    Live object detection powered by your trained YOLO11 model.
+    Connect your phone to the ESP32-C3 robot receiver.
+    Start the camera separately after connecting.
   </p>
 
-  <section class="panel">
-    <div class="stage">
-      <video id="video" autoplay muted playsinline></video>
-      <canvas id="overlay"></canvas>
+  <div class="controls">
+    <button id="connectRobotBtn">Connect Robot BLE</button>
+    <button id="disconnectRobotBtn" class="secondary" disabled>
+      Disconnect Robot
+    </button>
+  </div>
+
+  <p id="bleStatus">Robot: Not connected</p>
+
+  <p class="muted">
+    Last message: <strong id="lastBleMessage">None</strong>
+  </p>
+
+</section>
+
+<!-- DETECTION SETTINGS -->
+
+<section class="panel">
+
+  <h2>Detection Settings</h2>
+
+  <div class="controls">
+    <label for="confidence">Confidence threshold:</label>
+
+    <input
+      id="confidence"
+      type="range"
+      min="0.10"
+      max="0.90"
+      step="0.05"
+      value="0.35"
+    >
+
+    <strong id="confidenceValue">0.35</strong>
+  </div>
+
+</section>
+
+<!-- LIVE STATISTICS -->
+
+<section class="panel">
+
+  <h2>Live Statistics</h2>
+
+  <div class="stats">
+
+    <div class="stat">
+      <small>Objects detected</small>
+      <strong id="objectCount">0</strong>
     </div>
 
-    <div class="controls">
-      <button id="startBtn">Load Model & Start Camera</button>
-      <button id="stopBtn" class="secondary" disabled>
-        Stop Camera
-      </button>
+    <div class="stat">
+      <small>Inference time</small>
+      <strong id="inferenceTime">--</strong>
     </div>
 
-    <p id="status">Ready to load the model.</p>
-    <p id="error"></p>
-  </section>
-
-  <section class="panel">
-    <h2>Detection Settings</h2>
-    <div class="controls">
-      <label for="confidence">Confidence threshold:</label>
-      <input id="confidence" type="range"
-             min="0.10" max="0.90" step="0.05" value="0.35">
-      <strong id="confidenceValue">0.35</strong>
-    </div>
-  </section>
-
-  <section class="panel">
-    <h2>Live Statistics</h2>
-    <div class="stats">
-      <div class="stat">
-        <small>Objects detected</small>
-        <strong id="objectCount">0</strong>
-      </div>
-      <div class="stat">
-        <small>Inference time</small>
-        <strong id="inferenceTime">--</strong>
-      </div>
-      <div class="stat">
-        <small>Model status</small>
-        <strong id="modelStatus">Not loaded</strong>
-      </div>
+    <div class="stat">
+      <small>Model status</small>
+      <strong id="modelStatus">Not loaded</strong>
     </div>
 
-    <h2>Detection Results</h2>
-    <div id="detections">No detections yet.</div>
-  </section>
+  </div>
 
-  <section class="panel">
-    <h2>Trained Classes</h2>
-    <p class="muted">
-      Animal, Bus, Car, Person, Traffic Sign, Bush,
-      Tree Crown and Tree Trunk.
-    </p>
-    <p class="muted">
-      This webpage performs object detection only. It does not
-      control steering, brakes or vehicle motors.
-    </p>
-  </section>
+  <h2>Detection Results</h2>
+  <div id="detections">No detections yet.</div>
+
+</section>
+
+<section class="panel">
+
+  <h2>Trained Classes</h2>
+
+  <p class="muted">
+    Animal, Bus, Car, Person, Traffic Sign, Bush,
+    Tree Crown and Tree Trunk.
+  </p>
+
+  <p class="muted">
+    This webpage sends detected labels to the robot.
+    YOLO confidence does not measure obstacle distance.
+    Use a distance sensor and fail-safe motor logic
+    before allowing autonomous movement.
+  </p>
+
+</section>
+
 </main>
 
 <script>
 "use strict";
 
-// IMPORTANT:
-// If you rename the uploaded file to best.onnx, change this to:
-// const MODEL_FILE = "best.onnx";
+// MODEL FILE
 const MODEL_FILE = "best%20(1).onnx";
-
-// Resolve the model relative to the published webpage.
 const MODEL_URL = new URL(MODEL_FILE, window.location.href).href;
 
 const SIZE = 640;
+
 const CLASS_NAMES = [
-  "animal", "bus", "car", "person",
-  "traffic sign", "bush", "tree crown", "tree trunk"
+  "animal",
+  "bus",
+  "car",
+  "person",
+  "traffic sign",
+  "bush",
+  "tree crown",
+  "tree trunk"
 ];
 
 const COLORS = [
-  "#ff5c5c", "#ffb84d", "#39d98a", "#40a9ff",
-  "#d78bff", "#ffe066", "#ff7ac8", "#70f0e8"
+  "#ff5c5c",
+  "#ffb84d",
+  "#39d98a",
+  "#40a9ff",
+  "#d78bff",
+  "#ffe066",
+  "#ff7ac8",
+  "#70f0e8"
 ];
+
+// HTML ELEMENTS
 
 const video = document.getElementById("video");
 const canvas = document.getElementById("overlay");
 const ctx = canvas.getContext("2d");
+
 const startBtn = document.getElementById("startBtn");
 const stopBtn = document.getElementById("stopBtn");
+
 const statusEl = document.getElementById("status");
 const errorEl = document.getElementById("error");
+
 const modelStatus = document.getElementById("modelStatus");
 const detectionsEl = document.getElementById("detections");
+
 const confidenceInput = document.getElementById("confidence");
+
+// BLUETOOTH SETTINGS
+// These UUIDs must match the ESP32-C3 code.
+
+const ROBOT_NAME = "Robot_Receiver";
+
+const BLE_SERVICE_UUID =
+"6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+
+const BLE_WRITE_UUID =
+"6e400002-b5a3-f393-e0a9-e50e24dcca9e";
+
+const connectRobotBtn =
+document.getElementById("connectRobotBtn");
+
+const disconnectRobotBtn =
+document.getElementById("disconnectRobotBtn");
+
+const bleStatus =
+document.getElementById("bleStatus");
+
+const lastBleMessage =
+document.getElementById("lastBleMessage");
+
+// BLE VARIABLES
+
+let robotDevice = null;
+let robotCharacteristic = null;
+let robotConnected = false;
+
+let lastSentSignature = "";
+let lastSendTime = 0;
+let clearMessageSent = true;
+
+let bleWriteQueue = Promise.resolve();
+
+// CAMERA VARIABLES
 
 let session = null;
 let stream = null;
@@ -232,166 +342,498 @@ let running = false;
 let busy = false;
 let frameId = null;
 
+
+// CONFIDENCE SLIDER
+
 confidenceInput.addEventListener("input", () => {
+
   document.getElementById("confidenceValue").textContent =
     Number(confidenceInput.value).toFixed(2);
+
 });
+
 
 function showError(message) {
   errorEl.textContent = message;
 }
 
+
+// BLE STATUS
+
+function setBleStatus(message, connected = robotConnected) {
+
+  bleStatus.textContent = message;
+
+  bleStatus.style.color =
+    connected ? "#78e5ad" : "#ffd166";
+
+  connectRobotBtn.disabled = connected;
+  disconnectRobotBtn.disabled = !connected;
+
+}
+
+
+// HANDLE DISCONNECTION
+
+function handleRobotDisconnect() {
+
+  robotConnected = false;
+  robotCharacteristic = null;
+
+  lastSentSignature = "";
+  clearMessageSent = true;
+
+  setBleStatus("Robot: Disconnected", false);
+
+}
+
+
+// CONNECT ROBOT
+
+async function connectRobot() {
+
+  if (!navigator.bluetooth) {
+
+    setBleStatus(
+      "Web Bluetooth unavailable. Open this page in Chrome on Android using HTTPS.",
+      false
+    );
+
+    return;
+  }
+
+  connectRobotBtn.disabled = true;
+
+  setBleStatus("Searching for ESP32-C3...");
+
+  try {
+
+    robotDevice = await navigator.bluetooth.requestDevice({
+
+      filters: [
+        { name: ROBOT_NAME }
+      ],
+
+      optionalServices: [
+        BLE_SERVICE_UUID
+      ]
+
+    });
+
+    robotDevice.addEventListener(
+      "gattserverdisconnected",
+      handleRobotDisconnect
+    );
+
+    setBleStatus("Connecting to " + ROBOT_NAME + "...");
+
+    const server = await robotDevice.gatt.connect();
+
+    const service =
+      await server.getPrimaryService(BLE_SERVICE_UUID);
+
+    robotCharacteristic =
+      await service.getCharacteristic(BLE_WRITE_UUID);
+
+    robotConnected = true;
+
+    lastSentSignature = "";
+    clearMessageSent = true;
+
+    setBleStatus(
+      "Robot: Connected to " + ROBOT_NAME,
+      true
+    );
+
+  } catch (error) {
+
+    robotConnected = false;
+    robotCharacteristic = null;
+
+    setBleStatus(
+      "Connection failed: " + (error.message || error),
+      false
+    );
+
+    connectRobotBtn.disabled = false;
+
+  }
+
+}
+
+
+// DISCONNECT ROBOT
+
+function disconnectRobot() {
+
+  if (
+    robotDevice &&
+    robotDevice.gatt &&
+    robotDevice.gatt.connected
+  ) {
+
+    robotDevice.gatt.disconnect();
+
+  } else {
+
+    handleRobotDisconnect();
+
+  }
+
+}
+
+
+// SEND BLE MESSAGE
+
+async function writeRobotMessage(message) {
+
+  if (!robotConnected || !robotCharacteristic) return;
+
+  bleWriteQueue = bleWriteQueue.then(async () => {
+
+    if (!robotConnected || !robotCharacteristic) return;
+
+    const bytes =
+      new TextEncoder().encode(message + "\n");
+
+    if (robotCharacteristic.writeValueWithoutResponse) {
+
+      await robotCharacteristic.writeValueWithoutResponse(bytes);
+
+    } else {
+
+      await robotCharacteristic.writeValue(bytes);
+
+    }
+
+    lastBleMessage.textContent = message;
+
+  }).catch(error => {
+
+    setBleStatus(
+      "BLE send error: " + (error.message || error),
+      false
+    );
+
+  });
+
+  return bleWriteQueue;
+
+}
+
+
+// SEND YOLO DETECTIONS TO ESP32-C3
+
+function sendDetectionsToRobot(detections) {
+
+  if (!robotConnected) return;
+
+  const now = Date.now();
+
+  // No objects detected
+
+  if (!detections.length) {
+
+    if (!clearMessageSent) {
+
+      clearMessageSent = true;
+      lastSentSignature = "";
+
+      writeRobotMessage("CLEAR");
+
+    }
+
+    return;
+  }
+
+  clearMessageSent = false;
+
+  // Keep highest confidence for each class
+
+  const bestByClass = new Map();
+
+  for (const d of detections) {
+
+    const name = CLASS_NAMES[d.classId];
+
+    const previous = bestByClass.get(name);
+
+    if (!previous || d.score > previous.score) {
+
+      bestByClass.set(name, d);
+
+    }
+
+  }
+
+  const items = Array.from(bestByClass.entries())
+
+    .sort((a, b) => a[0].localeCompare(b[0]))
+
+    .map(([name, d]) =>
+
+      name.replaceAll(" ", "_") +
+      ":" +
+      d.score.toFixed(2)
+
+    );
+
+  const signature = items.join(",");
+
+  if (
+    signature === lastSentSignature &&
+    now - lastSendTime < 900
+  ) return;
+
+  lastSentSignature = signature;
+  lastSendTime = now;
+
+  writeRobotMessage("DETECT:" + signature);
+
+}
+
+
+// BLE BUTTON EVENTS
+
+connectRobotBtn.addEventListener("click", connectRobot);
+
+disconnectRobotBtn.addEventListener("click", disconnectRobot);
+
+
+// CANVAS RESIZE
+
 function resizeCanvas() {
+
   const rect = canvas.getBoundingClientRect();
+
   const dpr = window.devicePixelRatio || 1;
 
   canvas.width = Math.round(rect.width * dpr);
   canvas.height = Math.round(rect.height * dpr);
+
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
 }
 
 window.addEventListener("resize", resizeCanvas);
 
-// Verify that the model URL returns a successful response
-// before asking ONNX Runtime to load it.
+
+// CHECK MODEL URL
+
 async function checkModelURL() {
-  const response = await fetch(MODEL_URL, { cache: "no-store" });
+
+  const response = await fetch(MODEL_URL, {
+    cache: "no-store"
+  });
 
   if (!response.ok) {
+
     throw new Error(
       "Model download failed: HTTP " + response.status +
       "\nRequested URL: " + MODEL_URL +
       "\nCheck the GitHub filename and repository folder."
     );
+
   }
 
   const type = response.headers.get("content-type") || "";
 
   if (type.includes("text/html")) {
+
     throw new Error(
-      "GitHub returned a webpage instead of the model file.\n" +
-      "Check that the model exists at: " + MODEL_URL
+      "GitHub returned a webpage instead of the model file.\nCheck: " +
+      MODEL_URL
     );
+
   }
 
   const buffer = await response.arrayBuffer();
 
   if (buffer.byteLength < 1000) {
+
     throw new Error(
-      "The model response is unexpectedly small (" +
-      buffer.byteLength + " bytes). Check the uploaded file."
+      "The model response is unexpectedly small."
     );
+
   }
 
   console.log("Model URL:", MODEL_URL);
+
   console.log(
     "Model download size:",
-    (buffer.byteLength / 1048576).toFixed(2), "MB"
+    (buffer.byteLength / 1048576).toFixed(2),
+    "MB"
   );
 
   return buffer;
+
 }
 
-// Create a 640 x 640 image with letterbox padding.
+
+// IMAGE PREPROCESSING
+
 function preprocess() {
+
   const vw = video.videoWidth;
   const vh = video.videoHeight;
 
-  if (!vw || !vh) throw new Error("Camera is not ready.");
+  if (!vw || !vh) {
+    throw new Error("Camera is not ready.");
+  }
 
-  const scale = Math.min(SIZE / vw, SIZE / vh);
+  const scale = Math.min(
+    SIZE / vw,
+    SIZE / vh
+  );
+
   const nw = Math.round(vw * scale);
   const nh = Math.round(vh * scale);
+
   const px = Math.floor((SIZE - nw) / 2);
   const py = Math.floor((SIZE - nh) / 2);
 
   const temp = document.createElement("canvas");
+
   temp.width = SIZE;
   temp.height = SIZE;
 
-  const tctx = temp.getContext("2d", {
-    willReadFrequently: true
-  });
+  const tctx = temp.getContext(
+    "2d",
+    { willReadFrequently: true }
+  );
 
   tctx.fillStyle = "rgb(114,114,114)";
   tctx.fillRect(0, 0, SIZE, SIZE);
+
   tctx.drawImage(video, px, py, nw, nh);
 
-  const pixels = tctx.getImageData(0, 0, SIZE, SIZE).data;
+  const pixels =
+    tctx.getImageData(0, 0, SIZE, SIZE).data;
+
   const plane = SIZE * SIZE;
+
   const input = new Float32Array(3 * plane);
 
   for (let i = 0; i < plane; i++) {
+
     input[i] = pixels[4 * i] / 255;
-    input[plane + i] = pixels[4 * i + 1] / 255;
-    input[2 * plane + i] = pixels[4 * i + 2] / 255;
+
+    input[plane + i] =
+      pixels[4 * i + 1] / 255;
+
+    input[2 * plane + i] =
+      pixels[4 * i + 2] / 255;
+
   }
 
   return {
+
     tensor: new ort.Tensor(
-      "float32", input, [1, 3, SIZE, SIZE]
+      "float32",
+      input,
+      [1, 3, SIZE, SIZE]
     ),
-    scale, px, py, vw, vh
+
+    scale,
+    px,
+    py,
+    vw,
+    vh
+
   };
+
 }
 
+
+// INTERSECTION OVER UNION
+
 function intersectionOverUnion(a, b) {
+
   const x1 = Math.max(a.x1, b.x1);
   const y1 = Math.max(a.y1, b.y1);
+
   const x2 = Math.min(a.x2, b.x2);
   const y2 = Math.min(a.y2, b.y2);
 
   const inter =
-    Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
+    Math.max(0, x2 - x1) *
+    Math.max(0, y2 - y1);
 
-  const areaA = (a.x2 - a.x1) * (a.y2 - a.y1);
-  const areaB = (b.x2 - b.x1) * (b.y2 - b.y1);
+  const areaA =
+    (a.x2 - a.x1) *
+    (a.y2 - a.y1);
 
-  return inter / Math.max(areaA + areaB - inter, 1e-9);
+  const areaB =
+    (b.x2 - b.x1) *
+    (b.y2 - b.y1);
+
+  return inter / Math.max(
+    areaA + areaB - inter,
+    1e-9
+  );
+
 }
 
-// Decode common YOLO output:
-// [1, 12, candidates] or [1, candidates, 12].
-// This assumes 4 box values + 8 class scores.
+
+// DECODE YOLO OUTPUT
+
 function decode(output, meta) {
+
   const dims = output.dims;
 
-  if (!dims || dims.length !== 3 || dims[0] !== 1) {
+  if (
+    !dims ||
+    dims.length !== 3 ||
+    dims[0] !== 1
+  ) {
+
     throw new Error(
-      "Unsupported model output shape: " + JSON.stringify(dims)
+      "Unsupported model output shape: " +
+      JSON.stringify(dims)
     );
+
   }
 
   let features, candidates, channelFirst;
 
   if (dims[1] === 12) {
+
     features = dims[1];
     candidates = dims[2];
     channelFirst = true;
+
   } else if (dims[2] === 12) {
+
     candidates = dims[1];
     features = dims[2];
     channelFirst = false;
+
   } else {
+
     throw new Error(
-      "Your ONNX model output is " + JSON.stringify(dims) +
-      ", but this webpage expects an 8-class YOLO output " +
-      "with 12 features. The decoder must be adapted to your model."
+      "Your ONNX model output is " +
+      JSON.stringify(dims) +
+      ", but this webpage expects an 8-class YOLO output with 12 features."
     );
+
   }
 
   const data = output.data;
 
   function get(i, f) {
+
     return channelFirst
       ? data[f * candidates + i]
       : data[i * features + f];
+
   }
 
   const threshold = Number(confidenceInput.value);
+
   const found = [];
 
   for (let i = 0; i < candidates; i++) {
+
     const cx = get(i, 0);
     const cy = get(i, 1);
     const w = get(i, 2);
@@ -401,86 +843,138 @@ function decode(output, meta) {
     let classId = -1;
 
     for (let c = 0; c < CLASS_NAMES.length; c++) {
+
       const s = get(i, 4 + c);
+
       if (s > score) {
+
         score = s;
         classId = c;
+
       }
+
     }
 
-    if (!Number.isFinite(score) || score < threshold) continue;
-    if (![cx, cy, w, h].every(Number.isFinite)) continue;
-    if (w <= 0 || h <= 0) continue;
+    if (!Number.isFinite(score) || score < threshold) {
+      continue;
+    }
 
-    // Undo letterbox transformation.
-    let x1 = (cx - w / 2 - meta.px) / meta.scale;
-    let y1 = (cy - h / 2 - meta.py) / meta.scale;
-    let x2 = (cx + w / 2 - meta.px) / meta.scale;
-    let y2 = (cy + h / 2 - meta.py) / meta.scale;
+    if (
+      ![cx, cy, w, h].every(Number.isFinite) ||
+      w <= 0 ||
+      h <= 0
+    ) continue;
+
+    let x1 =
+      (cx - w / 2 - meta.px) / meta.scale;
+
+    let y1 =
+      (cy - h / 2 - meta.py) / meta.scale;
+
+    let x2 =
+      (cx + w / 2 - meta.px) / meta.scale;
+
+    let y2 =
+      (cy + h / 2 - meta.py) / meta.scale;
 
     x1 = Math.max(0, Math.min(meta.vw, x1));
     y1 = Math.max(0, Math.min(meta.vh, y1));
+
     x2 = Math.max(0, Math.min(meta.vw, x2));
     y2 = Math.max(0, Math.min(meta.vh, y2));
 
     if (x2 <= x1 || y2 <= y1) continue;
 
-    found.push({ x1, y1, x2, y2, score, classId });
+    found.push({
+      x1, y1, x2, y2, score, classId
+    });
+
   }
 
-  // Remove overlapping duplicate boxes for each class.
   found.sort((a, b) => b.score - a.score);
+
   const kept = [];
 
   for (const d of found) {
-    if (kept.some(k =>
-      k.classId === d.classId &&
-      intersectionOverUnion(k, d) > 0.45
-    )) continue;
+
+    if (
+      kept.some(
+        k =>
+          k.classId === d.classId &&
+          intersectionOverUnion(k, d) > 0.45
+      )
+    ) continue;
 
     kept.push(d);
+
     if (kept.length >= 100) break;
+
   }
 
   return kept;
+
 }
 
+
+// DRAW DETECTION BOXES
+
 function draw(detections, meta) {
+
   resizeCanvas();
 
   const rect = canvas.getBoundingClientRect();
+
   const vw = rect.width;
   const vh = rect.height;
 
-  const scale = Math.min(vw / meta.vw, vh / meta.vh);
+  const scale = Math.min(
+    vw / meta.vw,
+    vh / meta.vh
+  );
+
   const ox = (vw - meta.vw * scale) / 2;
   const oy = (vh - meta.vh * scale) / 2;
 
   ctx.clearRect(0, 0, vw, vh);
+
   ctx.lineWidth = 2;
   ctx.font = "bold 13px Arial";
 
   for (const d of detections) {
+
     const x = ox + d.x1 * scale;
     const y = oy + d.y1 * scale;
+
     const w = (d.x2 - d.x1) * scale;
     const h = (d.y2 - d.y1) * scale;
 
     const color = COLORS[d.classId];
-    const label = CLASS_NAMES[d.classId] +
-      " " + (d.score * 100).toFixed(1) + "%";
+
+    const label =
+      CLASS_NAMES[d.classId] +
+      " " +
+      (d.score * 100).toFixed(1) +
+      "%";
 
     ctx.strokeStyle = color;
     ctx.strokeRect(x, y, w, h);
 
-    const labelWidth = ctx.measureText(label).width + 10;
+    const labelWidth =
+      ctx.measureText(label).width + 10;
+
     const labelY = Math.max(0, y - 22);
 
     ctx.fillStyle = color;
     ctx.fillRect(x, labelY, labelWidth, 21);
 
     ctx.fillStyle = "#071421";
-    ctx.fillText(label, x + 5, labelY + 14);
+
+    ctx.fillText(
+      label,
+      x + 5,
+      labelY + 14
+    );
+
   }
 
   document.getElementById("objectCount").textContent =
@@ -489,34 +983,57 @@ function draw(detections, meta) {
   detectionsEl.replaceChildren();
 
   if (!detections.length) {
+
     detectionsEl.textContent = "No objects detected.";
-    return;
+
+  } else {
+
+    for (const d of detections) {
+
+      const row = document.createElement("div");
+      row.className = "detection";
+
+      const name = document.createElement("span");
+      name.textContent = CLASS_NAMES[d.classId];
+
+      const confidence = document.createElement("strong");
+
+      confidence.textContent =
+        (d.score * 100).toFixed(1) + "%";
+
+      row.append(name, confidence);
+
+      detectionsEl.append(row);
+
+    }
+
   }
 
-  for (const d of detections) {
-    const row = document.createElement("div");
-    row.className = "detection";
+  // SEND DETECTIONS TO ESP32-C3
 
-    const name = document.createElement("span");
-    name.textContent = CLASS_NAMES[d.classId];
+  sendDetectionsToRobot(detections);
 
-    const confidence = document.createElement("strong");
-    confidence.textContent =
-      (d.score * 100).toFixed(1) + "%";
-
-    row.append(name, confidence);
-    detectionsEl.append(row);
-  }
 }
 
+
+// YOLO DETECTION LOOP
+
 async function loop() {
+
   if (!running) return;
 
-  if (!busy && session && video.readyState >= 2) {
+  if (
+    !busy &&
+    session &&
+    video.readyState >= 2
+  ) {
+
     busy = true;
 
     try {
+
       const startTime = performance.now();
+
       const meta = preprocess();
 
       const feeds = {
@@ -524,7 +1041,10 @@ async function loop() {
       };
 
       const results = await session.run(feeds);
-      const output = results[session.outputNames[0]];
+
+      const output =
+        results[session.outputNames[0]];
+
       const detections = decode(output, meta);
 
       draw(detections, meta);
@@ -532,34 +1052,61 @@ async function loop() {
       document.getElementById("inferenceTime").textContent =
         Math.round(performance.now() - startTime) + " ms";
 
-      statusEl.textContent = "Camera running · Detection active";
+      statusEl.textContent =
+        "Camera running · Detection active";
+
     } catch (e) {
-      showError("Detection failed:\n" + (e.message || String(e)));
-      statusEl.textContent = "Detection stopped due to an error.";
+
+      showError(
+        "Detection failed:\n" +
+        (e.message || String(e))
+      );
+
+      statusEl.textContent =
+        "Detection stopped due to an error.";
+
       running = false;
+
       startBtn.disabled = false;
       stopBtn.disabled = true;
+
     } finally {
+
       busy = false;
+
     }
+
   }
 
-  if (running) frameId = requestAnimationFrame(loop);
+  if (running) {
+    frameId = requestAnimationFrame(loop);
+  }
+
 }
 
+
+// START CAMERA AND MODEL
+
 async function start() {
+
   startBtn.disabled = true;
+
   showError("");
 
   try {
+
     if (!window.ort) {
+
       throw new Error(
         "ONNX Runtime failed to load. Check your internet connection."
       );
+
     }
 
     if (!session) {
+
       statusEl.textContent = "Checking model URL...";
+
       modelStatus.textContent = "Downloading";
 
       const modelBuffer = await checkModelURL();
@@ -567,109 +1114,197 @@ async function start() {
       statusEl.textContent = "Loading ONNX model...";
 
       try {
-        // Load downloaded bytes directly. This avoids a second
-        // fetch by ONNX Runtime. External-data models still need
-        // their external tensor files and a compatible export.
-        session = await ort.InferenceSession.create(modelBuffer, {
-          executionProviders: ["wasm"],
-          graphOptimizationLevel: "all"
-        });
-      } catch (e) {
-        throw new Error(
-          "The model file was downloaded, but ONNX Runtime could not load it.\n" +
-          "It may require external tensor data, or the export may be incompatible.\n" +
-          "Original error: " + (e.message || String(e))
+
+        session = await ort.InferenceSession.create(
+          modelBuffer,
+          {
+            executionProviders: ["wasm"],
+            graphOptimizationLevel: "all"
+          }
         );
+
+      } catch (e) {
+
+        throw new Error(
+          "The model downloaded, but ONNX Runtime could not load it.\n" +
+          "It may require external tensor data or an incompatible export.\n" +
+          "Original error: " +
+          (e.message || String(e))
+        );
+
       }
 
       console.log("Input names:", session.inputNames);
       console.log("Output names:", session.outputNames);
+
       console.log("Input metadata:", session.inputMetadata);
       console.log("Output metadata:", session.outputMetadata);
 
       modelStatus.textContent = "Loaded";
+
     }
 
-    if (!navigator.mediaDevices ||
-        !navigator.mediaDevices.getUserMedia) {
+    if (
+      !navigator.mediaDevices ||
+      !navigator.mediaDevices.getUserMedia
+    ) {
+
       throw new Error(
         "Camera access requires HTTPS or localhost in a supported browser."
       );
+
     }
 
     statusEl.textContent = "Requesting camera permission...";
 
     stream = await navigator.mediaDevices.getUserMedia({
+
       audio: false,
+
       video: {
+
         facingMode: { ideal: "environment" },
+
         width: { ideal: 1280 },
+
         height: { ideal: 720 }
+
       }
+
     });
 
     video.srcObject = stream;
+
     await video.play();
 
     if (!video.videoWidth) {
+
       await new Promise((resolve, reject) => {
-        video.addEventListener("loadedmetadata", resolve, { once: true });
-        video.addEventListener("error", reject, { once: true });
+
+        video.addEventListener(
+          "loadedmetadata",
+          resolve,
+          { once: true }
+        );
+
+        video.addEventListener(
+          "error",
+          reject,
+          { once: true }
+        );
+
       });
+
     }
 
     running = true;
+
     stopBtn.disabled = false;
+
     statusEl.textContent = "Camera started.";
+
     frameId = requestAnimationFrame(loop);
 
   } catch (e) {
+
     running = false;
+
     startBtn.disabled = false;
     stopBtn.disabled = true;
-    modelStatus.textContent = session ? "Loaded" : "Load failed";
+
+    modelStatus.textContent =
+      session ? "Loaded" : "Load failed";
 
     showError(
       (e.message || String(e)) +
-      "\n\nModel URL: " + MODEL_URL
+      "\n\nModel URL: " +
+      MODEL_URL
     );
 
-    statusEl.textContent = "Could not start. See error above.";
+    statusEl.textContent =
+      "Could not start. See error above.";
 
     if (stream) {
-      stream.getTracks().forEach(track => track.stop());
+
+      stream.getTracks().forEach(
+        track => track.stop()
+      );
+
       stream = null;
+
     }
+
   }
+
 }
 
+
+// STOP CAMERA
+
 function stop() {
+
   running = false;
 
   if (frameId !== null) {
+
     cancelAnimationFrame(frameId);
     frameId = null;
+
   }
 
   if (stream) {
-    stream.getTracks().forEach(track => track.stop());
+
+    stream.getTracks().forEach(
+      track => track.stop()
+    );
+
     stream = null;
+
   }
 
   video.srcObject = null;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  ctx.clearRect(
+    0,
+    0,
+    canvas.width,
+    canvas.height
+  );
 
   document.getElementById("objectCount").textContent = "0";
+
   document.getElementById("inferenceTime").textContent = "--";
+
   detectionsEl.textContent = "Camera stopped.";
 
   startBtn.disabled = false;
   stopBtn.disabled = true;
+
   statusEl.textContent = "Camera stopped.";
+
+  // Inform ESP32-C3 that camera detection stopped.
+
+  if (robotConnected) {
+
+    clearMessageSent = true;
+    lastSentSignature = "";
+
+    writeRobotMessage("CAMERA_STOPPED");
+
+  }
+
 }
 
+
+// BUTTON EVENTS
+
 startBtn.addEventListener("click", start);
+
 stopBtn.addEventListener("click", stop);
+
+setBleStatus("Robot: Not connected", false);
+
 </script>
+
 </body>
 </html>
